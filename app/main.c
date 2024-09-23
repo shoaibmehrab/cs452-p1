@@ -81,27 +81,34 @@ void trim_trailing_spaces(char *str) {
 }
 
 // Function to handle built-in commands
-int handle_builtin_commands(char *line) {
-    printf("Handling command: %s\n", line); // Debugging statement
-    if (strcmp(line, "exit") == 0) {
-        return 1; // Signal to exit the shell
-    } else if (strncmp(line, "cd", 2) == 0) {
-        char *dir = strtok(line + 2, " \t");
-        if (change_dir(&dir) != 0) {
-            fprintf(stderr, "cd: %s: %s\n", dir ? dir : "NULL", strerror(errno));
-        }
-        return 0;
-    } else if (strcmp(line, "history") == 0) {
-        HIST_ENTRY **hist_list = history_list();
-        if (hist_list) {
-            for (int i = 0; hist_list[i]; i++) {
-                printf("%d: %s\n", i + history_base, hist_list[i]->line);
-            }
-        }
-        return 0;
-    }
-    return 0; // Not a built-in command
-}
+// int handle_builtin_commands(char *line, char **prompt) {
+//     printf("Handling command: %s\n", line); // Debugging statement
+//     if (strcmp(line, "exit") == 0) {
+//         return 1; // Signal to exit the shell
+//     } else if (strncmp(line, "cd", 2) == 0) {
+//         char *dir = strtok(line + 2, " \t");
+//         if (change_dir(&dir) != 0) {
+//             fprintf(stderr, "cd: %s: %s\n", dir ? dir : "NULL", strerror(errno));
+//         }
+//         else {
+//             free(*prompt); // Free the old prompt
+//             *prompt = update_prompt(); // Update the prompt
+//         }
+//         return 0;
+//     } else if (strcmp(line, "pwd") == 0) {
+//         print_working_directory();
+//         return 0;
+//     }else if (strcmp(line, "history") == 0) {
+//         HIST_ENTRY **hist_list = history_list();
+//         if (hist_list) {
+//             for (int i = 0; hist_list[i]; i++) {
+//                 printf("%d: %s\n", i + history_base, hist_list[i]->line);
+//             }
+//         }
+//         return 0;
+//     }
+//     return 0; // Not a built-in command
+// }
 
 int main(int argc, char **argv)
 {
@@ -120,47 +127,74 @@ int main(int argc, char **argv)
         }
     }
 
-    // Initialize history
+    // Initialize the shell
+    struct shell sh;
+    sh_init(&sh);
+
+    //Initialize history
     using_history();
 
     // Set custom completion function
-    rl_attempted_completion_function = command_completion;
+    // rl_attempted_completion_function = command_completion;
 
-    //Get the custom prompt from the environment variable
-    // char *prompt_env = getenv("MY_PROMPT");
-    // char prompt[256];
-    // if (prompt_env != NULL) {
-    //     snprintf(prompt, sizeof(prompt), "%s> ", prompt_env);
-    // } else {
-    //     snprintf(prompt, sizeof(prompt), "$ "); // Default prompt
+
+    // char *prompt = get_prompt("MY_PROMPT");
+    // if (prompt == NULL) {
+    //     fprintf(stderr, "Failed to allocate memory for prompt\n");
+    //     exit(EXIT_FAILURE);
     // }
 
-    char *prompt = get_prompt("MY_PROMPT");
-    if (prompt == NULL) {
-        fprintf(stderr, "Failed to allocate memory for prompt\n");
-        exit(EXIT_FAILURE);
-    }
-
     // Read user input in a loop
-    char *line;
-    while ((line = readline(prompt))) {
-        // Trim trailing spaces
-        trim_trailing_spaces(line);
+    // char *line;
+    // while ((line = readline(prompt))) {
+    //     // Trim trailing spaces
+    //     trim_trailing_spaces(line);
 
-        // Check for built-in commands
-        if (handle_builtin_commands(line)) {
-            free(line);
-            break;
+    //     // Check for built-in commands
+    //     if (handle_builtin_commands(line)) {
+    //         free(line);
+    //         break;
+    //     }
+
+    //     // Add input to history
+    //     add_history(line);
+
+    //     // Free the allocated line
+    //     free(line);
+    // }
+
+    // free(prompt);
+    // Main loop for the shell
+    while (1) {
+        char *line = readline(sh.prompt);
+        if (!line) {
+            break; // EOF or read error
         }
 
-        // Add input to history
-        add_history(line);
+        if (*line) {
+            add_history(line);
+        }
 
-        // Free the allocated line
+        char **cmd = cmd_parse(line);
+        if (cmd && cmd[0]) {
+            if (!do_builtin(&sh, cmd)) {
+                // Execute external command
+                pid_t pid = fork();
+                if (pid == 0) {
+                    execvp(cmd[0], cmd);
+                    perror("execvp");
+                    exit(EXIT_FAILURE);
+                } else if (pid > 0) {
+                    wait(NULL);
+                } else {
+                    perror("fork");
+                }
+            }
+        }
+        cmd_free(cmd);
         free(line);
     }
 
-    free(prompt);
-
+    sh_destroy(&sh);
     return 0;
 }
