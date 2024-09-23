@@ -1,17 +1,24 @@
 /**Update this file with the starter code**/
 
+#include <stdio.h>
 #include <stdlib.h>
+#include <unistd.h>
+#include <readline/readline.h>
+#include <readline/history.h>
+#include<editline/history.h>
 #include <string.h>
 #include <pwd.h>
 #include <errno.h>
-#include <unistd.h>
-#include <stdio.h>
-#include <linux/limits.h>
+#include <ctype.h>
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <termios.h>
 #include <signal.h>
+#include <linux/limits.h>
 #include "lab.h"
+
+// Declare the history_list function if not declared in the headers
+extern HIST_ENTRY **history_list();
 
 char *get_prompt(const char *env) {
     const char *prompt_env = getenv(env);
@@ -25,19 +32,19 @@ char *get_prompt(const char *env) {
 }
 
 int change_dir(char **dir) {
-    if (dir == NULL || *dir == NULL) {
+    if (dir[1] == NULL) {
         // No directory specified, use HOME
-        *dir = getenv("HOME");
-        if (*dir == NULL) {
+        dir[1] = getenv("HOME");
+        if (dir[1] == NULL) {
             // HOME not set, use getpwuid
             struct passwd *pw = getpwuid(getuid());
             if (pw == NULL) {
                 return -1; // Error, could not determine home directory
             }
-            *dir = pw->pw_dir;
+            dir[1] = pw->pw_dir;
         }
     }
-    return chdir(*dir);
+    return chdir(dir[1]);
 }
 
 // Function to parse the command line input
@@ -96,8 +103,13 @@ bool do_builtin(struct shell *sh, char **argv) {
             perror("cd");
         }
         return true;
-    } else if (strcmp(argv[0], "jobs") == 0) {
-        // Implement jobs command if needed
+    } else if (strcmp(argv[0], "history") == 0) {
+        HIST_ENTRY **history_list = history_list(); // Corrected function call
+        if (history_list) {
+            for (int i = 0; history_list[i]; i++) {
+                printf("%d: %s\n", i + history_base, history_list[i]->line);
+            }
+        }
         return true;
     }
     return false;

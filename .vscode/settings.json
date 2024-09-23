@@ -1,5 +1,8 @@
 {
     "files.associations": {
-        "lab.h": "c"
-    }
+        "lab.h": "c",
+        "readline.h": "c",
+        "history.h": "c"
+    },
+    "C_Cpp.errorSquiggles": "disabled"
 }
