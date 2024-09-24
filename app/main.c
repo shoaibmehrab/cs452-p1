@@ -117,6 +117,7 @@ struct background_job {
     int job_number;
     pid_t pid;
     char *command;
+    int done;
     struct background_job *next;
 };
 
@@ -128,9 +129,42 @@ void add_background_job(pid_t pid, char *command) {
     job->job_number = job_counter++;
     job->pid = pid;
     job->command = strdup(command);
+    job->done = 0;
     job->next = bg_jobs;
     bg_jobs = job;
-    printf("[%d] %d Running %s\n", job->job_number, job->pid, job->command);
+    printf("[%d] %d %s\n", job->job_number, job->pid, job->command);
+}
+
+// void check_background_jobs() {
+//     struct background_job *job = bg_jobs;
+//     while (job != NULL) {
+//         int status;
+//         pid_t result = waitpid(job->pid, &status, WNOHANG);
+//         if (result == 0) {
+//             // Process is still running
+//             job = job->next;
+//         } else if (result == -1) {
+//             // Error occurred
+//             perror("waitpid");
+//             job = job->next;
+//         } else {
+//             // Process has finished
+//             job->done = 1;
+//             job = job->next;
+//         }
+//     }
+// }
+
+void print_jobs() {
+    struct background_job *job = bg_jobs;
+    while (job != NULL) {
+        if (job->done) {
+            printf("[%d] Done    %s\n", job->job_number, job->command);
+        } else {
+            printf("[%d] %d Running %s\n", job->job_number, job->pid, job->command);
+        }
+        job = job->next;
+    }
 }
 
 void check_background_jobs() {
@@ -168,6 +202,16 @@ void check_background_jobs() {
             job = job->next;
             free(temp);
         }
+    }
+}
+
+void free_background_jobs() {
+    struct background_job *job = bg_jobs;
+    while (job != NULL) {
+        struct background_job *next = job->next;
+        free(job->command);
+        free(job);
+        job = next;
     }
 }
 
@@ -217,7 +261,7 @@ int main(int argc, char **argv)
 
         char *line = readline(sh.prompt);
         if (!line) {
-            // Handle EOF or read error
+             // Handle EOF or read error
             if (feof(stdin)) {
                 printf("\n");
                 break;
@@ -236,6 +280,13 @@ int main(int argc, char **argv)
 
         if (*trimmed_line) {
             add_history(trimmed_line);
+        }
+
+         // Check if the command is "jobs"
+        if (strcmp(trimmed_line, "jobs") == 0) {
+            print_jobs();
+            free(line);
+            continue;
         }
 
         // Check if the command should run in the background
@@ -272,7 +323,6 @@ int main(int argc, char **argv)
                 // This is the child process
                 pid_t child = getpid();
                 setpgid(child, child);
-                tcsetpgrp(STDIN_FILENO, child);
 
                 // Set signals back to default in the child process
                 signal(SIGINT, SIG_DFL);
@@ -313,6 +363,7 @@ int main(int argc, char **argv)
         free(line);
     }
 
+    free_background_jobs();
     sh_destroy(&sh);
     return 0;
 }
