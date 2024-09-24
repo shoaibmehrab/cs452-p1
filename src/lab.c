@@ -5,7 +5,6 @@
 #include <unistd.h>
 #include <readline/readline.h>
 #include <readline/history.h>
-#include<editline/history.h>
 #include <string.h>
 #include <pwd.h>
 #include <errno.h>
@@ -17,12 +16,9 @@
 #include <linux/limits.h>
 #include "lab.h"
 
-// Declare the history_list function if not declared in the headers
-extern HIST_ENTRY **history_list();
-
 char *get_prompt(const char *env) {
     const char *prompt_env = getenv(env);
-    const char *default_prompt = "shell> ";
+    const char *default_prompt = "shell>";
     const char *prompt = prompt_env ? prompt_env : default_prompt;
     char *result = malloc(strlen(prompt) + 1);
     if (result) {
@@ -32,34 +28,71 @@ char *get_prompt(const char *env) {
 }
 
 int change_dir(char **dir) {
+    char *path;
+
     if (dir[1] == NULL) {
         // No directory specified, use HOME
-        dir[1] = getenv("HOME");
-        if (dir[1] == NULL) {
+        path = getenv("HOME");
+        if (path == NULL) {
             // HOME not set, use getpwuid
             struct passwd *pw = getpwuid(getuid());
             if (pw == NULL) {
                 return -1; // Error, could not determine home directory
             }
-            dir[1] = pw->pw_dir;
+            path = pw->pw_dir;
         }
+    } else {
+        path = dir[1];
     }
-    return chdir(dir[1]);
+
+    return chdir(path);
 }
 
 // Function to parse the command line input
 char **cmd_parse(const char *line) {
+    // size_t arg_max = sysconf(_SC_ARG_MAX);
+    // char **args = malloc(arg_max * sizeof(char *));
+    // if (!args) return NULL;
+
+    // char *token;
+    // char *line_copy = strdup(line);
+    // size_t index = 0;
+
+    // token = strtok(line_copy, " ");
+    // while (token != NULL && index < arg_max - 1) {
+    //     args[index++] = strdup(token);
+    //     token = strtok(NULL, " ");
+    // }
+    // args[index] = NULL;
+
+    // free(line_copy);
+    // return args;
+
     size_t arg_max = sysconf(_SC_ARG_MAX);
     char **args = malloc(arg_max * sizeof(char *));
     if (!args) return NULL;
 
     char *token;
     char *line_copy = strdup(line);
+    if (!line_copy) {
+        free(args);
+        return NULL;
+    }
     size_t index = 0;
 
     token = strtok(line_copy, " ");
     while (token != NULL && index < arg_max - 1) {
-        args[index++] = strdup(token);
+        args[index] = strdup(token);
+        if (!args[index]) {
+            // Free previously allocated memory in case of failure
+            for (size_t i = 0; i < index; i++) {
+                free(args[i]);
+            }
+            free(args);
+            free(line_copy);
+            return NULL;
+        }
+        index++;
         token = strtok(NULL, " ");
     }
     args[index] = NULL;
@@ -81,17 +114,19 @@ void cmd_free(char **line) {
 char *trim_white(char *line) {
     if (!line) return NULL;
 
+    char *start = line;
+
     // Trim leading whitespace
-    while (isspace((unsigned char)*line)) line++;
+    while (isspace((unsigned char)*start)) start++;
 
     // Trim trailing whitespace
-    if (*line) {
-        char *end = line + strlen(line) - 1;
-        while (end > line && isspace((unsigned char)*end)) end--;
+    if (*start) {
+        char *end = start + strlen(start) - 1;
+        while (end > start && isspace((unsigned char)*end)) end--;
         end[1] = '\0';
     }
 
-    return line;
+    return start;
 }
 
 bool do_builtin(struct shell *sh, char **argv) {
@@ -99,15 +134,28 @@ bool do_builtin(struct shell *sh, char **argv) {
         sh_destroy(sh);
         exit(0);
     } else if (strcmp(argv[0], "cd") == 0) {
-        if (change_dir(argv) != 0) {
+        const char *path = NULL;
+        if (argv[1] == NULL) {
+            path = getenv("HOME");
+            if (path == NULL) {
+                struct passwd *pw = getpwuid(getuid());
+                if (pw != NULL) {
+                    path = pw->pw_dir;
+                }
+            }
+        } else {
+            path = argv[1];
+        }
+
+        if (path == NULL || chdir(path) != 0) {
             perror("cd");
         }
         return true;
     } else if (strcmp(argv[0], "history") == 0) {
-        HIST_ENTRY **history_list = history_list(); // Corrected function call
-        if (history_list) {
-            for (int i = 0; history_list[i]; i++) {
-                printf("%d: %s\n", i + history_base, history_list[i]->line);
+        HIST_ENTRY **history_list_vm = history_list();
+        if (history_list_vm) {
+            for (int i = 0; history_list_vm[i]; i++) {
+                printf("%d: %s\n", i + history_base, history_list_vm[i]->line);
             }
         }
         return true;
