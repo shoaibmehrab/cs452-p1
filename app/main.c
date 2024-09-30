@@ -163,6 +163,15 @@ void remove_done_jobs() {
     }
 }
 
+void terminate_background_jobs() {
+    struct background_job *job = bg_jobs;
+    while (job != NULL) {
+        kill(job->pid, SIGTERM); // Send SIGTERM to terminate the background job
+        job = job->next;
+    }
+}
+
+
 int main(int argc, char **argv)
 {
     int opt;
@@ -236,6 +245,13 @@ int main(int argc, char **argv)
             remove_done_jobs();
             free(line);
             continue;
+        }
+
+         // Check if the command is "exit"
+        if (strcmp(trimmed_line, "exit") == 0) {
+            free(line);
+            terminate_background_jobs(); // Terminate all background jobs
+            break;
         }
 
         // Check if the command should run in the background
