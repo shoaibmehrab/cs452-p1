@@ -11,108 +11,6 @@
 #include <errno.h>
 #include "../src/lab.h"
 
-// Custom completion function
-// char *command_generator(const char *text, int state) {
-//     static int list_index, len;
-//     static char **matches = NULL;
-//     char *name;
-
-//     // List of predefined commands for completion
-//     static char *commands[] = {
-//         "help",
-//         "exit",
-//         "ls",
-//         "cd",
-//         "history",
-//         NULL
-//     };
-
-//     // Combine predefined commands and history entries
-//     if (!state) {
-//         list_index = 0;
-//         len = strlen(text);
-
-//         // Count history entries
-//         int history_count = history_length;
-
-//         // Allocate memory for matches
-//         matches = (char **)malloc((history_count + 6) * sizeof(char *));
-//         int match_index = 0;
-
-//         // Add predefined commands to matches
-//         for (int i = 0; commands[i] != NULL; i++) {
-//             matches[match_index++] = commands[i];
-//         }
-
-//         // Add history entries to matches
-//         for (int i = 0; i < history_count; i++) {
-//             matches[match_index++] = history_get(i + 1)->line;
-//         }
-
-//         // Null-terminate the matches array
-//         matches[match_index] = NULL;
-//     }
-
-//     // Return matches that start with the input text
-//     while ((name = matches[list_index++])) {
-//         if (strncmp(name, text, len) == 0) {
-//             return strdup(name);
-//         }
-//     }
-
-//     // Free allocated memory for matches
-//     if (matches) {
-//         free(matches);
-//         matches = NULL;
-//     }
-
-//     return NULL;
-// }
-
-// Custom completion function
-// char **command_completion(const char *text, int start, int end) {
-//     rl_attempted_completion_over = 1;
-//     return rl_completion_matches(text, command_generator);
-// }
-
-// Function to trim trailing spaces
-// void trim_trailing_spaces(char *str) {
-//     int len = strlen(str);
-//     while (len > 0 && isspace((unsigned char)str[len - 1])) {
-//         str[--len] = '\0';
-//     }
-// }
-
-// Function to handle built-in commands
-// int handle_builtin_commands(char *line, char **prompt) {
-//     printf("Handling command: %s\n", line); // Debugging statement
-//     if (strcmp(line, "exit") == 0) {
-//         return 1; // Signal to exit the shell
-//     } else if (strncmp(line, "cd", 2) == 0) {
-//         char *dir = strtok(line + 2, " \t");
-//         if (change_dir(&dir) != 0) {
-//             fprintf(stderr, "cd: %s: %s\n", dir ? dir : "NULL", strerror(errno));
-//         }
-//         else {
-//             free(*prompt); // Free the old prompt
-//             *prompt = update_prompt(); // Update the prompt
-//         }
-//         return 0;
-//     } else if (strcmp(line, "pwd") == 0) {
-//         print_working_directory();
-//         return 0;
-//     }else if (strcmp(line, "history") == 0) {
-//         HIST_ENTRY **hist_list = history_list();
-//         if (hist_list) {
-//             for (int i = 0; hist_list[i]; i++) {
-//                 printf("%d: %s\n", i + history_base, hist_list[i]->line);
-//             }
-//         }
-//         return 0;
-//     }
-//     return 0; // Not a built-in command
-// }
-
 struct background_job {
     int job_number;
     pid_t pid;
@@ -124,62 +22,77 @@ struct background_job {
 struct background_job *bg_jobs = NULL;
 int job_counter = 1;
 
-void add_background_job(pid_t pid, char *command) {
+void add_background_job(pid_t pid, char **cmd) {
     struct background_job *job = malloc(sizeof(struct background_job));
     job->job_number = job_counter++;
     job->pid = pid;
-    job->command = strdup(command);
+
+    // Concatenate all command arguments into a single string
+    size_t cmd_len = 0;
+    for (int i = 0; cmd[i] != NULL; i++) {
+        cmd_len += strlen(cmd[i]) + 1; // +1 for space or null terminator
+    }
+    job->command = malloc(cmd_len + 2); // +2 for space and ampersand
+    if (job->command) {
+        job->command[0] = '\0';
+        for (int i = 0; cmd[i] != NULL; i++) {
+            strcat(job->command, cmd[i]);
+            if (cmd[i + 1] != NULL) {
+                strcat(job->command, " ");
+            }
+        }
+        strcat(job->command, " &");
+    }
+
     job->done = 0;
     job->next = bg_jobs;
     bg_jobs = job;
-    printf("[%d] %d %s\n", job->job_number, job->pid, job->command);
+    printf("[%d] %d Running %s\n", job->job_number, job->pid, job->command);
 }
 
-// void check_background_jobs() {
-//     struct background_job *job = bg_jobs;
-//     while (job != NULL) {
-//         int status;
-//         pid_t result = waitpid(job->pid, &status, WNOHANG);
-//         if (result == 0) {
-//             // Process is still running
-//             job = job->next;
-//         } else if (result == -1) {
-//             // Error occurred
-//             perror("waitpid");
-//             job = job->next;
-//         } else {
-//             // Process has finished
-//             job->done = 1;
-//             job = job->next;
-//         }
-//     }
-// }
-
 void print_jobs() {
+    // Count the number of jobs
+    int job_count = 0;
     struct background_job *job = bg_jobs;
     while (job != NULL) {
+        job_count++;
+        job = job->next;
+    }
+
+    // Collect jobs into an array
+    struct background_job **job_array = malloc(job_count * sizeof(struct background_job *));
+    job = bg_jobs;
+    for (int i = 0; i < job_count; i++) {
+        job_array[i] = job;
+        job = job->next;
+    }
+
+    // Sort the array by job number
+    for (int i = 0; i < job_count - 1; i++) {
+        for (int j = 0; j < job_count - i - 1; j++) {
+            if (job_array[j]->job_number > job_array[j + 1]->job_number) {
+                struct background_job *temp = job_array[j];
+                job_array[j] = job_array[j + 1];
+                job_array[j + 1] = temp;
+            }
+        }
+    }
+
+    // Print the jobs in sorted order
+    for (int i = 0; i < job_count; i++) {
+        job = job_array[i];
         if (job->done) {
             printf("[%d] Done    %s\n", job->job_number, job->command);
         } else {
             printf("[%d] %d Running %s\n", job->job_number, job->pid, job->command);
         }
-        job = job->next;
     }
-}
 
-void check_background_jobs() {
-    struct background_job *job = bg_jobs;
+    // Remove and free done jobs
     struct background_job *prev = NULL;
+    job = bg_jobs;
     while (job != NULL) {
-        int status;
-        pid_t result = waitpid(job->pid, &status, WNOHANG);
-        if (result == 0) {
-            // Process is still running
-            prev = job;
-            job = job->next;
-        } else if (result == -1) {
-            // Error occurred
-            perror("waitpid");
+        if (job->done) {
             if (prev == NULL) {
                 bg_jobs = job->next;
             } else {
@@ -190,17 +103,31 @@ void check_background_jobs() {
             job = job->next;
             free(temp);
         } else {
-            // Process has finished
-            printf("[%d] Done %s\n", job->job_number, job->command);
-            if (prev == NULL) {
-                bg_jobs = job->next;
-            } else {
-                prev->next = job->next;
-            }
-            free(job->command);
-            struct background_job *temp = job;
+            prev = job;
             job = job->next;
-            free(temp);
+        }
+    }
+
+    // Free the job array
+    free(job_array);
+}
+
+void check_background_jobs() {
+    struct background_job *job = bg_jobs;
+    while (job != NULL) {
+        int status;
+        pid_t result = waitpid(job->pid, &status, WNOHANG);
+        if (result == 0) {
+            // Process is still running
+            job = job->next;
+        } else if (result == -1) {
+            // Error occurred
+            perror("waitpid");
+            job = job->next;
+        } else {
+            // Process has finished
+            job->done = 1;
+            job = job->next;
         }
     }
 }
@@ -212,6 +139,27 @@ void free_background_jobs() {
         free(job->command);
         free(job);
         job = next;
+    }
+}
+
+void remove_done_jobs() {
+    struct background_job *prev = NULL;
+    struct background_job *job = bg_jobs;
+    while (job != NULL) {
+        if (job->done) {
+            if (prev == NULL) {
+                bg_jobs = job->next;
+            } else {
+                prev->next = job->next;
+            }
+            free(job->command);
+            struct background_job *temp = job;
+            job = job->next;
+            free(temp);
+        } else {
+            prev = job;
+            job = job->next;
+        }
     }
 }
 
@@ -285,6 +233,7 @@ int main(int argc, char **argv)
          // Check if the command is "jobs"
         if (strcmp(trimmed_line, "jobs") == 0) {
             print_jobs();
+            remove_done_jobs();
             free(line);
             continue;
         }
@@ -331,6 +280,12 @@ int main(int argc, char **argv)
                 signal(SIGTTIN, SIG_DFL);
                 signal(SIGTTOU, SIG_DFL);
 
+                if (background) {
+                // Redirect stdout and stderr to /dev/null for background processes
+                freopen("/dev/null", "w", stdout);
+                freopen("/dev/null", "w", stderr);
+                }
+
                 execvp(cmd[0], cmd);
                 perror("execvp");
                 exit(EXIT_FAILURE);
@@ -338,7 +293,7 @@ int main(int argc, char **argv)
                 // This is the parent process
                 setpgid(pid, pid);
                 if (background) {
-                    add_background_job(pid, line);
+                    add_background_job(pid, cmd);
                 } else {
                     tcsetpgrp(STDIN_FILENO, pid);
 

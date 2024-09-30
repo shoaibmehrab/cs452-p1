@@ -50,23 +50,6 @@ int change_dir(char **dir) {
 
 // Function to parse the command line input
 char **cmd_parse(const char *line) {
-    // size_t arg_max = sysconf(_SC_ARG_MAX);
-    // char **args = malloc(arg_max * sizeof(char *));
-    // if (!args) return NULL;
-
-    // char *token;
-    // char *line_copy = strdup(line);
-    // size_t index = 0;
-
-    // token = strtok(line_copy, " ");
-    // while (token != NULL && index < arg_max - 1) {
-    //     args[index++] = strdup(token);
-    //     token = strtok(NULL, " ");
-    // }
-    // args[index] = NULL;
-
-    // free(line_copy);
-    // return args;
 
     size_t arg_max = sysconf(_SC_ARG_MAX);
     char **args = malloc(arg_max * sizeof(char *));
